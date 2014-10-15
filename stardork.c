@@ -21,6 +21,21 @@
 #define sndon(freq) ioctl(0, KIOCSOUND, 1193810 / freq)
 #define sndoff() ioctl(0, KIOCSOUND, 0)
 
+#define PROB_DOWN 's'
+#define PROB_UP 'w'
+#define PROB_LEFT 'a'
+#define PROB_RIGHT 'd'
+#define PROB_UP_RIGHT 'e'
+#define PROB_UP_LEFT 'q'
+#define PROB_DOWN_RIGHT 'c'
+#define PROB_DOWN_LEFT 'z'
+ //below is the keypad directions used when determing 'movement' and location
+ //    _ _ _
+ //   |1|2|3|
+ //   |8|9|4|
+ //   |7|6|5|
+
+
 struct vehicle {
     char *ship;
     char *blank;
@@ -50,19 +65,10 @@ struct probe_gun {
 } fire = { "+", " ", 5 };    
 
 struct maze store[255];
-typedef int bounds;
 
 void control_ship(int y, int x);
 void move_ship(int *y, int *x, int input);
-void shoot(int *y, int *x, int input);
-void shoot_right(int y, int x);
-void shoot_up(int y, int x);
-void shoot_down(int y, int x);
-void shoot_left(int y, int x);
-void shoot_up_left(int y, int x);
-void shoot_up_right(int y, int x);
-void shoot_down_left(int y, int x);
-void shoot_down_right(int y, int x);
+void shoot(int y, int x, int input);
 void aftershot(int y, int x);
 void probe_delay(void);
 void check_if_bumped(int y, int x);
@@ -76,10 +82,7 @@ void display_wormhole(void);
 void count_moves(void);
 void game_over(int y, int x);
 void clear_tracks(int y, int x);
-bounds is_out_of_bounds_up(int y);
-bounds is_out_of_bounds_down(int y);
-bounds is_out_of_bounds_left(int y);
-int is_out_of_bounds_right(int y);
+int is_out_of_bounds(int y, int x);
 void change_colors(int color);
 void show_stars(void);
 void winner(void);
@@ -127,103 +130,115 @@ void control_ship(int y, int x) {
         display_wormhole();
         input = getch();
         move_ship(&y, &x, input);
-        shoot(&y, &x, input);
+        //shoot(&y, &x, input);
+        shoot(y, x, input);
         check_if_bumped(y, x);
         check_if_wormhole_is_hit(y, x);
+        mvprintw(2,2,"x %i", x);
+        mvprintw(3,3,"y %i",y);
     } 
 }
 
 void move_ship(int *y, int *x, int input) {
     switch (input) {
         case KEY_UP: 
-            if ((is_out_of_bounds_up(*y))) {
+            if (is_out_of_bounds(*y-1, *x)) {break;}
+
+                clear_tracks(*y, *x);
+                mvprintw(--*y, *x, aircraft.ship);          
                 break;
-            }
-            clear_tracks(*y, *x);
-            mvprintw(--*y, *x, aircraft.ship);          
-            break;
         case KEY_DOWN: 
-            if ((is_out_of_bounds_down(*y))) {
+            if (is_out_of_bounds(*y+1, *x)) {break;}
+
+                clear_tracks(*y, *x);
+                mvprintw(++*y, *x, aircraft.ship);
                 break;
-            }
-            clear_tracks(*y, *x);
-            mvprintw(++*y, *x, aircraft.ship);
-            break;
         case KEY_RIGHT:
-            if ((is_out_of_bounds_right(*x))) {
+            if (is_out_of_bounds(*y, *x+1)) {break;}
+            
+                clear_tracks(*y, *x); 
+                mvprintw(*y, ++*x, aircraft.ship);
                 break;
-            }
-            clear_tracks(*y, *x); 
-            mvprintw(*y, ++*x, aircraft.ship);
-            break;
         case KEY_LEFT:
-            if ((is_out_of_bounds_left(*x))) {
+            if ((is_out_of_bounds(*y, *x-1))) {break;}
+            
+                clear_tracks(*y, *x); 
+                mvprintw(*y, --*x, aircraft.ship);
                 break;
-            }
-            clear_tracks(*y, *x); 
-            mvprintw(*y, --*x, aircraft.ship);
-            break;
         case KEY_HOME:
         case KEY_A1:
-            if (is_out_of_bounds_up(*y) || is_out_of_bounds_left(*x)) {
+            if (is_out_of_bounds(*y-1, *x-1)) {break;}
+            
+                clear_tracks(*y, *x); 
+                mvprintw(--*y, --*x, aircraft.ship);
                 break;
-            }
-            clear_tracks(*y, *x); 
-            mvprintw(--*y, --*x, aircraft.ship);
-            break;
         case KEY_PPAGE:
-            if (is_out_of_bounds_up(*y) || is_out_of_bounds_right(*x)) {
+            if (is_out_of_bounds(*y-1,*x+1)) {break;}
+            
+                clear_tracks(*y, *x); 
+                mvprintw(--*y, ++*x, aircraft.ship);
                 break;
-            }
-            clear_tracks(*y, *x); 
-            mvprintw(--*y, ++*x, aircraft.ship);
-            break;
         case KEY_END:
         case KEY_C1:
-            if (is_out_of_bounds_down(*y) || is_out_of_bounds_left(*x)) {
+            if (is_out_of_bounds(*y+1,*x-1)) {break;}
+            
+                clear_tracks(*y, *x); 
+                mvprintw(++*y, --*x, aircraft.ship);
                 break;
-            }
-            clear_tracks(*y, *x); 
-            mvprintw(++*y, --*x, aircraft.ship);
-            break;
         case KEY_NPAGE:
-            if (is_out_of_bounds_down(*y) || is_out_of_bounds_right(*x)) {
+            if (is_out_of_bounds(*y+1, *x+1)) {break;}
+            
+                clear_tracks(*y, *x); 
+                mvprintw(++*y, ++*x, aircraft.ship);
                 break;
-            }
-            clear_tracks(*y, *x); 
-            mvprintw(++*y, ++*x, aircraft.ship);
-            break;
     }
     count_moves();
 }
 
-void shoot(int *y, int *x, int input) {
-    switch (input) {
-        case 's': 
-            shoot_down(*y, *x);
-            break;
-        case 'a': 
-            shoot_left(*y, *x);
-            break;
-        case 'w': 
-            shoot_up(*y, *x);
-            break;
-        case 'd':
-            shoot_right(*y, *x);
-            break;
-        case 'q':
-            shoot_up_left(*y, *x);
-            break;
-        case 'e':
-            shoot_up_right(*y, *x);
-            break;
-        case 'z':
-            shoot_down_left(*y, *x);
-            break;
-        case 'c': 
-            shoot_down_right(*y, *x); 
-            break;
-    }
+void shoot(int y, int x, int input) {
+        int xadj = 0;
+        int yadj = 0;
+
+          switch (input) {
+            case PROB_UP_LEFT:      
+                xadj = -1; 
+                yadj = -1;               
+                break;
+            case PROB_UP:
+                yadj = -1;
+                break;
+            case PROB_UP_RIGHT:
+                xadj = 1;
+                yadj = -1;
+                break;
+            case PROB_RIGHT:
+                xadj = 1;
+                break;
+            case PROB_DOWN_RIGHT:
+                xadj = 1;
+                yadj = 1;
+                break;
+            case PROB_DOWN:
+                yadj = 1;
+                break;
+            case PROB_DOWN_LEFT:
+                xadj = -1;
+                yadj = 1;
+                break;
+            case PROB_LEFT:
+                xadj = -1;
+                break;
+            }
+
+    if (xadj != 0 || yadj != 0) {
+            while(YMIN < y && y < LINES && XMIN < x && x < COLS) {
+                y += yadj;
+                x += xadj;
+                mvprintw(y, x, fire.probe);
+                aftershot(y, x);
+            if (check_if_wormhole_is_hit(y, x)) {break; }
+                }
+      }
 }
 
 void display_hud(void) {
@@ -248,109 +263,6 @@ void count_moves(void) {
     mvprintw(0, 50, "Moves: %d", hud.moves);
 }
 
-void shoot_right(int y, int x) {
-    int i;
-
-    for (i = x; i < COLS - 1; i++) {
-        mvprintw(y, ++x, fire.probe);
-        aftershot(y, x);
-        if (check_if_wormhole_is_hit(y, x)) {
-            break;
-        }
-    }
-}
-
-void shoot_up(int y, int x) {
-    int i;
-
-    for (i = y; i > 1; i--) {
-        mvprintw(--y, x, fire.probe); 
-        aftershot(y, x);
-        if (check_if_wormhole_is_hit(y, x)) {
-            break;
-        }
-    }
-}
-
-void shoot_down(int y, int x) {
-    int i;
-
-    for (i = y; i < LINES; i++) {
-        mvprintw(++y, x, fire.probe);
-        aftershot(y, x);
-        if (check_if_wormhole_is_hit(y, x)) {
-            break;
-        }
-    }
-}
-
-void shoot_left(int y, int x) {
-    int i;
-
-    for (i = x; i > 0; i--) {
-        mvprintw(y, --x, fire.probe);
-        aftershot(y, x);
-        if (check_if_wormhole_is_hit(y, x)) {
-            break;
-        }
-    }
-}
-
-void shoot_up_left(int y, int x) {
-    int i, j;
-
-    j = x, i = y;
-    while (i > 1 && j > 1) {
-        x -= 2, i--, j--;
-        mvprintw(--y, x, fire.probe);
-        aftershot(y, x);
-        if (check_if_wormhole_is_hit(y, x)) {
-            break;
-        }
-    }
-}
-
-void shoot_up_right(int y, int x) {
-    int i, j;
-
-    j = x, i = y;
-    while (i > 1 && j < COLS - 1) {
-        x += 2, i--, j++;
-        mvprintw(--y, x, fire.probe);
-        aftershot(y, x);
-        if (check_if_wormhole_is_hit(y, x)) {
-            break;
-        }
-    }
-}
-
-void shoot_down_left(int y, int x) {
-    int i, j;
-
-    j = x, i = y;
-    while (i < LINES && j > 1) {
-        x -= 2, i++, j--;
-        mvprintw(++y, x, fire.probe);
-        aftershot(y, x);
-        if (check_if_wormhole_is_hit(y, x)) {
-            break;
-        }
-    }
-}
-
-void shoot_down_right(int y, int x) {
-    int i, j;
-
-    j = x, i = y;
-    while (i < LINES && j < COLS - 1) {
-        x += 2, i++, j++;
-        mvprintw(++y, x, fire.probe);
-        aftershot(y, x);
-        if (check_if_wormhole_is_hit(y, x)) {
-            break;
-        }
-    }
-}
 
 void aftershot(int y, int x) {
     probe_delay();
@@ -500,35 +412,14 @@ void game_over(int y, int x) {
     exit(0);
 }
 
-int is_out_of_bounds_up(int y) {
-    if (y == YMIN) {
+int is_out_of_bounds(int y, int x) {
+    if ( y == YMIN - 1 || y == LINES || x == XMIN - 1 || x == COLS) {
         return 1;
     } else {
         return 0;
     }
 }
 
-int is_out_of_bounds_down(int y) {
-    if (y == LINES - 1) {
-        return 1;
-    } else {
-        return 0;
-    }
-}
-
-int is_out_of_bounds_left(int x) {
-    if (x == XMIN) {
-        return 1;
-    }
-    return 0;
-}
-
-int is_out_of_bounds_right(int x) {
-    if (x == COLS - 1) {
-        return 1;
-    }
-    return 0;
-}
 
 void winner(void) {
     WINDOW *win = newwin(0, 0, 0, 0);
@@ -561,6 +452,7 @@ void winner(void) {
 }
 
 void clear_tracks(int y, int x) {
+    mvprintw(1,1,"clearing tracks");
     mvprintw(y, x, aircraft.blank);
 }
 
