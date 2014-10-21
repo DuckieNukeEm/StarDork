@@ -11,6 +11,7 @@
 #include <time.h>
 #include <sys/ioctl.h>
 #include <sys/kd.h>
+ #include <ctype.h>
 
 #define YMIN 1
 #define XMIN 0
@@ -29,11 +30,17 @@
 #define PROB_UP_LEFT 'q'
 #define PROB_DOWN_RIGHT 'c'
 #define PROB_DOWN_LEFT 'z'
+
+#define STAR_INCREASE 45
  //below is the keypad directions used when determing 'movement' and location
  //    _ _ _
  //   |1|2|3|
  //   |8|9|4|
  //   |7|6|5|
+
+int starmap[1000][1000]
+//# = blackhole, @ = wormhole, X = spaceship, . = star, + = probe
+
 
 
 struct vehicle {
@@ -52,8 +59,11 @@ struct maze {
     char *star;
     char *wormhole;
     char *blank;
-    int plant1[255];
-    int plant2[255];
+    int plant1[65000];
+    int plant2[65000];
+    int starcount;
+    int starmap[1000][1000]; //(y,x) COORDs :)
+    //# = blackhole, @ = wormhole, X = spaceship, . = star, + = probe
     int wormhole_y;
     int wormhole_x;
 } space = { ".", "@", " " };
@@ -64,7 +74,7 @@ struct probe_gun {
     unsigned int speed;
 } fire = { "+", " ", 5 };    
 
-struct maze store[255];
+struct maze store = {".", "#", " "};
 
 void control_ship(int y, int x);
 void move_ship(int *y, int *x, int input);
@@ -87,6 +97,7 @@ void change_colors(int color);
 void show_stars(void);
 void winner(void);
 void set_signal_handler(void);
+int is_empty( char *s);
 static void catch_sigint(int signo);
 
 
@@ -103,12 +114,15 @@ int main(int argc, char **argv) {
     keypad(stdscr, TRUE); 
     scrollok(stdscr, TRUE);
 
-    space.wormhole_y = rand() % LINES; 
-    space.wormhole_x = rand() % COLS - 1;
-    y = START_POS_Y;
-    x = START_POS_X;
-    hud.moves = 0;
+    space.wormhole_y = rand() % (LINES - 1) + 1; 
+    space.wormhole_x = rand() % (COLS - 1);
+    y = rand() % (LINES - 1) + 1;
+    x = rand() % (COLS - 1);
 
+
+
+    hud.moves = 0;
+    store.starcount = 0;
     plot_stars_randomly(); 
     mvprintw(y, x, aircraft.ship); 
     control_ship(y, x);
@@ -134,10 +148,11 @@ void control_ship(int y, int x) {
         shoot(y, x, input);
         check_if_bumped(y, x);
         check_if_wormhole_is_hit(y, x);
-        mvprintw(2,2,"x %i", x);
-        mvprintw(3,3,"y %i",y);
+        mvprintw(2,2,"x %i - %i", x, COLS);
+        mvprintw(3,3,"y %i - %i",y, LINES);
     } 
 }
+
 
 void move_ship(int *y, int *x, int input) {
     switch (input) {
@@ -231,12 +246,13 @@ void shoot(int y, int x, int input) {
             }
 
     if (xadj != 0 || yadj != 0) {
-            while(YMIN < y && y < LINES && XMIN < x && x < COLS) {
+            while(!is_out_of_bounds(y + yadj, x + xadj)) {
                 y += yadj;
                 x += xadj;
                 mvprintw(y, x, fire.probe);
                 aftershot(y, x);
             if (check_if_wormhole_is_hit(y, x)) {break; }
+                
                 }
       }
 }
@@ -256,6 +272,7 @@ void display_hud(void) {
 
 void display_wormhole(void) {
     mvprintw(space.wormhole_y, space.wormhole_x, space.wormhole);
+    mvprintw(1,5, "wormhole at (%i,%i)", space.wormhole_x, space.wormhole_y);
 }
 
 void count_moves(void) {
@@ -287,19 +304,17 @@ bool check_if_wormhole_is_hit(int y, int x) {
 }
 
 void plot_wormhole(y, x) {
-    int r1, r2, i, j;
+    int r1, r2, i;
 
-    r1 = rand() % LINES -1 ;
-    r1++;
-    r2 = rand() % COLS;
+    r1 = rand() % (LINES - 1) + 1 ;
+    r2 = rand() % (COLS - 1) ;
     
     // Avoid plotting wormhole where stars currently exist:
-    for (i = 0; i < COLS; i++) {
-        for (j = 0; j < COLS; j++) {
-            if ((r1 == store[j].plant1[i] && r2 == store[j].plant2[i]) || r1 == 0) {
+    for (i = 0; i <= store.starcount; i++) {
+            if (r1 == store.plant1[i] && r2 == store.plant2[i]) {
                 plot_wormhole(y, x);
                 return; // end recursion
-            }
+            
         }
     }
 
@@ -309,28 +324,36 @@ void plot_wormhole(y, x) {
 
 void plot_stars_randomly(void) {
     int r1, r2, i; 
-    static int star_plant = 0;
 
     srand((unsigned)time(NULL));
-    for (i = 1; i < COLS; i++) {
-        r1 = rand() % LINES -1 ; // adding +1 avoids 0 so it doesn't show stars over hud
-        r1++; // the +1 above doesn't work cause it can knock it over the # of columns!
-        r2 = rand() % COLS; 
-        store[star_plant].plant1[i] = r1;
-        store[star_plant].plant2[i] = r2;
+    for (i = 0; i < STAR_INCREASE; i++) {
+        store.starcount++;
+        r1 = rand() % LINES -1 ;
+        r1++; // the purposes is so that stars don't show up in the HUD
+        r2 = rand() % COLS - 2; //so it doesn't hit the newline issue at (COL - 1,LINES - 1) location
+        store.plant1[store.starcount] = r1;
+        store.plant2[store.starcount] = r2;
+        store.starmap[r1][r2]="."
     }
 
-    star_plant++;
+    
+}
+
+
+void collapse_stars(void){
+
+
+
+
 }
 
 void show_stars(void) {
-    int plant, i;
+    int i;
 
-    for (i = 0; i < COLS; i++) {
-        for (plant = 0; plant < COLS; plant++) {
-            mvprintw(store[plant].plant1[i], store[plant].plant2[i], space.star);
+    for (i = 0; i <= store.starcount; i++) {
+        mvprintw(store.plant1[i], store.plant2[i], space.star);
+        
         }
-    }
 }
 
 void check_if_you_won(void) {
@@ -339,17 +362,16 @@ void check_if_you_won(void) {
 }
 
 void check_if_bumped(int y, int x) {
-    int c, i;
+    int i;
  
-    for (i = 0; i < COLS; i++) {
-        for (c = 0; c < COLS; c++) {
-            if (y == store[c].plant1[i] && x == store[c].plant2[i]) {
+    for (i = 0; i <= store.starcount; i++) {
+            if (y == store.plant1[i] && x == store.plant2[i]) {
                 mvprintw(y, x, aircraft.ship, A_BOLD);
                 change_colors(COLOR_RED);
                 getch();
                 hud.power--;  
-            }
-        }
+                }
+        
     }
     change_colors(COLOR_WHITE);
     check_if_dead(y, x);
@@ -413,7 +435,7 @@ void game_over(int y, int x) {
 }
 
 int is_out_of_bounds(int y, int x) {
-    if ( y == YMIN - 1 || y == LINES || x == XMIN - 1 || x == COLS) {
+    if ( y == YMIN - 1 || y == LINES || x == XMIN - 1 || x == COLS - 1) {
         return 1;
     } else {
         return 0;
@@ -452,7 +474,6 @@ void winner(void) {
 }
 
 void clear_tracks(int y, int x) {
-    mvprintw(1,1,"clearing tracks");
     mvprintw(y, x, aircraft.blank);
 }
 
@@ -477,7 +498,7 @@ static void catch_sigint(int signo) {
     mvprintw(5, 10, "Bye Bye!\n", 11);
     attrset(A_NORMAL);
     refresh();
-    napms(1000);
+    napms(100);
     endwin();
     exit(0);
 }
